@@ -10,6 +10,8 @@ BACKUP_DIR="/f/Atelier/Scripts"
 
 LOG_FILE="/var/log/backup.log"
 
+KEEP=7   # Rotation : on garde les 7 dernières sauvegardes
+
 # Initialisation du fichier de log (fallback si /var/log non accessible)
 init_log() {
     if mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null && touch "$LOG_FILE" 2>/dev/null; then
@@ -110,8 +112,7 @@ fi
 # ---- Création de l’archive tar.gz ----
 # On se place dans le parent pour éviter d’embarquer tout le chemin absolu dans l’archive
 PARENT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
-[[ -x "$PARENT_DIR" ]] || echo "Accès refusé au dossier parent : $PARENT_DIR"
-exit 1
+[[ -x "$PARENT_DIR" ]] || error_exit "Accès refusé au dossier parent : $PARENT_DIR"
 
 tar -C "$PARENT_DIR" -czf "$ARCHIVE_PATH" "$FOLDER_NAME" \
   || error_exit "Échec lors de la création de l'archive."
@@ -124,4 +125,21 @@ echo "Source  : $SOURCE"
 echo "Archive : $ARCHIVE_PATH"
 echo "Taille  : $FOLDER_SIZE"
 
-log_line "INFO" "Succès | archive=$ARCHIVE_PATH | taille=$SIZE_HUMAN"
+log_line "INFO" "Succès | archive=$ARCHIVE_PATH | taille=$FOLDER_SIZE"
+
+# --- Rotation des sauvegardes : garder uniquement les 7 dernières (1.3) ---
+deleted=0
+
+# Liste des archives (du plus récent au plus ancien)
+mapfile -t backups < <(ls -1t "$BACKUP_DIR"/backup_*.tar.gz 2>/dev/null || true)
+
+# Si on en a plus que KEEP, on supprime les plus anciennes
+if (( ${#backups[@]} > KEEP )); then
+  for old in "${backups[@]:KEEP}"; do
+    rm -f "$old" && ((deleted++))
+  done
+fi
+
+echo "🧹 Rotation: $deleted sauvegarde(s) supprimée(s) (conservation: $KEEP)"
+# Optionnel : log aussi la rotation
+# log "ROTATION - deleted=$deleted keep=$KEEP"
