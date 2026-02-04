@@ -57,7 +57,7 @@ fi
 # ---------- Memory (Go + %) ----------
 MEM_USED_GB="N/A"
 MEM_TOTAL_GB="N/A"
-MEM_PCT="N/A"
+MEMORY="N/A"
 
 # ---------- Helpers ----------
 # --- [AJOUT ICI] Couleurs + alertes ---
@@ -90,7 +90,7 @@ if [[ "${MEM_TOTAL_KB:-}" =~ ^[0-9]+$ ]] && [[ "${MEM_FREE_KB:-}" =~ ^[0-9]+$ ]]
   MEM_USED_KB=$((MEM_TOTAL_KB - MEM_FREE_KB))
   MEM_USED_GB="$(to_gb "$MEM_USED_KB")"
   MEM_TOTAL_GB="$(to_gb "$MEM_TOTAL_KB")"
-  MEM_PCT="$(pct "$MEM_USED_KB" "$MEM_TOTAL_KB")"
+  MEMORY="$(pct "$MEM_USED_KB" "$MEM_TOTAL_KB")"
 else
   # fallback PowerShell (bytes)
   if have powershell.exe; then
@@ -104,7 +104,7 @@ else
       MEM_USED_KB=$((MEM_TOTAL_KB - MEM_FREE_KB))
       MEM_USED_GB="$(to_gb "$MEM_USED_KB")"
       MEM_TOTAL_GB="$(to_gb "$MEM_TOTAL_KB")"
-      MEM_PCT="$(pct "$MEM_USED_KB" "$MEM_TOTAL_KB")"
+      MEMORY="$(pct "$MEM_USED_KB" "$MEM_TOTAL_KB")"
     fi
   fi
 fi
@@ -112,8 +112,17 @@ fi
 # ---------- Partitions ----------
 DISK_INFO="N/A"
 if have df; then
-  # -P pour format stable ; on affiche source + mountpoint + %
-  DISK_INFO="$(df -P | tail -n +2 | awk '{printf "%-20s %-25s %s\n",$1,$6,$5}')"
+  # --- [MODIF ICI] Partitions en couleur ---
+  DISK_INFO="$(df -P | tail -n +2 | awk '
+    function color(p){
+      if (p < 70)  return "\033[0;32m";
+      if (p <= 85) return "\033[0;33m";
+      return "\033[0;31m";
+    }
+    {
+      gsub(/%/,"",$5); p=$5;
+      printf "%-20s %-25s %s%d%%%s\n", $1, $6, color(p), p, "\033[0m";
+    }')"
 else
   # fallback PowerShell (lettres de lecteurs)
   if have powershell.exe; then
@@ -142,8 +151,23 @@ echo "===== MONITOR (Git Bash / Windows) ====="
 echo "Hostname                 : $HOST"
 echo "Date/Heure               : $NOW"
 echo "Uptime                   : $UPTIME_PRETTY"
-echo "Utilisation CPU          : ${CPU_PCT}%"
-echo "Memoire                  : ${MEM_USED_GB} Go / ${MEM_TOTAL_GB} Go (${MEM_PCT}%)"
+# --- [MODIF ICI] CPU en couleur ---
+if [[ "$CPU_PCT" =~ ^[0-9]+$ ]]; then
+  c="$(color_for_pct "$CPU_PCT")"
+  echo -e "Utilisation CPU          : ${c}${CPU_PCT}%${NC}"
+else
+  echo "Utilisation CPU          : N/A"
+fi
+
+# --- [MODIF ICI] Mémoire en couleur ---
+if [[ "$MEMORY" != "N/A" ]]; then
+  mem_int="$(to_int "$MEMORY")"
+  c="$(color_for_pct "$mem_int")"
+  echo -e "Memoire                  : ${MEM_USED_GB} Go / ${MEM_TOTAL_GB} Go (${c}${MEMORY}%${NC})"
+else
+  echo "Memoire                  : N/A"
+fi
+
 echo
 echo "Partitions (Utilisation) :"
 echo "$DISK_INFO"
