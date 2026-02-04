@@ -6,6 +6,14 @@ set -euo pipefail
 # ---------- Helpers ----------
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# --- [AJOUT 2.3] Option rapport ---
+GENERATE_REPORT=false
+
+if [ "${1:-}" = "-r" ]; then
+  GENERATE_REPORT=true
+fi
+
+
 # WMIC (Windows) -> possible "No Instance(s) Available." ou vide
 wmic_value() {
   local query="$1"
@@ -38,6 +46,10 @@ elif have net; then
   [ -z "$UPTIME_PRETTY" ] && UPTIME_PRETTY="N/A"
 fi
 
+# --- [AJOUT 2.3] Fichier de rapport ---
+REPORT_DATE="$(date '+%Y%m%d')"
+REPORT_FILE="/var/log/monitor_${REPORT_DATE}.txt"
+
 # ---------- CPU % ----------
 CPU_PCT="N/A"
 # WMIC (souvent présent)
@@ -60,7 +72,7 @@ MEM_TOTAL_GB="N/A"
 MEMORY="N/A"
 
 # ---------- Helpers ----------
-# --- [AJOUT ICI] Couleurs + alertes ---
+# --- [AJOUT 2.2] Couleurs + alertes ---
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 RED='\033[0;31m'
@@ -112,7 +124,7 @@ fi
 # ---------- Partitions ----------
 DISK_INFO="N/A"
 if have df; then
-  # --- [MODIF ICI] Partitions en couleur ---
+  # --- [MODIF 2.2] Partitions en couleur ---
   DISK_INFO="$(df -P | tail -n +2 | awk '
     function color(p){
       if (p < 70)  return "\033[0;32m";
@@ -146,12 +158,30 @@ elif have tasklist; then
   PROC_COUNT="$(tasklist 2>/dev/null | tr -d '\r' | tail -n +4 | wc -l | tr -d ' ')"
 fi
 
+# --- [AJOUT 2.3] Contenu du rapport ---
+if $GENERATE_REPORT; then
+  {
+    echo "===== RAPPORT SYSTEME ====="
+    echo "Hostname        : $HOST"
+    echo "Date / Heure    : $NOW"
+    echo "Uptime          : $UPTIME_PRETTY"
+    echo "CPU             : ${CPU_PCT}%"
+    echo "Memoire         : ${MEM_USED_GB} Go / ${MEM_TOTAL_GB} Go (${MEMORY}%)"
+    echo
+    echo "Partitions :"
+    echo "$DISK_INFO"
+    echo
+    echo "Processus       : $PROC_COUNT"
+    echo "==========================="
+  } >> "$REPORT_FILE"
+fi
+
 # ---------- Output ----------
 echo "===== MONITOR (Git Bash / Windows) ====="
 echo "Hostname                 : $HOST"
 echo "Date/Heure               : $NOW"
 echo "Uptime                   : $UPTIME_PRETTY"
-# --- [MODIF ICI] CPU en couleur ---
+# --- [MODIF 2.2] CPU en couleur ---
 if [[ "$CPU_PCT" =~ ^[0-9]+$ ]]; then
   c="$(color_for_pct "$CPU_PCT")"
   echo -e "Utilisation CPU          : ${c}${CPU_PCT}%${NC}"
@@ -159,7 +189,7 @@ else
   echo "Utilisation CPU          : N/A"
 fi
 
-# --- [MODIF ICI] Mémoire en couleur ---
+# --- [MODIF 2.2] Mémoire en couleur ---
 if [[ "$MEMORY" != "N/A" ]]; then
   mem_int="$(to_int "$MEMORY")"
   c="$(color_for_pct "$mem_int")"
@@ -174,3 +204,7 @@ echo "$DISK_INFO"
 echo
 echo "Processus en cours       : $PROC_COUNT"
 echo "======================================="
+# --- [AJOUT 2.3] Confirmation ---
+if $GENERATE_REPORT; then
+  echo "Rapport genere : $REPORT_FILE"
+fi
