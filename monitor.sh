@@ -158,6 +158,38 @@ elif have tasklist; then
   PROC_COUNT="$(tasklist 2>/dev/null | tr -d '\r' | tail -n +4 | wc -l | tr -d ' ')"
 fi
 
+# ---------- 2.4. Top 5 process (CPU / Mémoire) ----------
+TOP_CPU="N/A"
+TOP_MEMORY="N/A"
+
+if have powershell.exe; then
+  # Top 5 CPU (moyenne sur l'instant, tri décroissant)
+  TOP_CPU="$(powershell.exe -NoProfile -Command \
+    "Get-Process |
+     Sort-Object -Property CPU -Descending |
+     Select-Object -First 5 -Property Id,ProcessName,CPU |
+     Format-Table -AutoSize | Out-String -Width 200" \
+    2>/dev/null | tr -d '\r' | sed '/^[[:space:]]*$/d' || true)"
+
+  # Top 5 Mémoire (WorkingSet = RAM en octets)
+  TOP_MEMORY="$(powershell.exe -NoProfile -Command \
+    "Get-Process |
+     Sort-Object -Property WorkingSet64 -Descending |
+     Select-Object -First 5 -Property Id,ProcessName,@{Name='MemMB';Expression={[math]::Round($_.WorkingSet64/1MB,1)}} |
+     Format-Table -AutoSize | Out-String -Width 200" \
+    2>/dev/null | tr -d '\r' | sed '/^[[:space:]]*$/d' || true)"
+else
+  # Fallback si jamais tu es sur un Linux réel (WSL/VM)
+  if have ps; then
+    TOP_CPU="$(ps -eo pid,comm,%cpu --sort=-%cpu | head -n 6 2>/dev/null || true)"
+    TOP_MEMORY="$(ps -eo pid,comm,%mem --sort=-%mem | head -n 6 2>/dev/null || true)"
+  fi
+fi
+
+[ -z "${TOP_CPU:-}" ] && TOP_CPU="N/A"
+[ -z "${TOP_MEMORY:-}" ] && TOP_MEMORY="N/A"
+
+
 # --- [AJOUT 2.3] Contenu du rapport ---
 if $GENERATE_REPORT; then
   {
@@ -171,6 +203,11 @@ if $GENERATE_REPORT; then
     echo "Partitions :"
     echo "$DISK_INFO"
     echo
+    echo "Top 5 processus (CPU) :"
+    echo "$TOP_CPU"
+    echo
+    echo "Top 5 processus (Mémoire) :"
+    echo "$TOP_MEM"
     echo "Processus       : $PROC_COUNT"
     echo "==========================="
   } >> "$REPORT_FILE"
@@ -204,6 +241,13 @@ echo "$DISK_INFO"
 echo
 echo "Processus en cours       : $PROC_COUNT"
 echo "======================================="
+echo
+echo "Top 5 processus (CPU) :"
+echo "$TOP_CPU"
+echo
+echo "Top 5 processus (Mémoire) :"
+echo "$TOP_MEM"
+
 # --- [AJOUT 2.3] Confirmation ---
 if $GENERATE_REPORT; then
   echo "Rapport genere : $REPORT_FILE"
